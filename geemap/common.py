@@ -17,6 +17,7 @@ import requests
 import shutil
 import tarfile
 import urllib.request
+from urllib.parse import urlparse
 import warnings
 import zipfile
 import importlib.resources
@@ -13145,7 +13146,9 @@ def change_require(lib_path):
         raise ValueError("lib_path must be a string.")
 
     if lib_path.startswith("http"):
-        if lib_path.startswith("https://github.com") and "blob" in lib_path:
+        parsed_url = urlparse(lib_path)
+        if parsed_url.scheme == "https" and parsed_url.netloc == "github.com" and "blob" in parsed_url.path:
+            # Replace 'blob' in the path with 'raw'
             lib_path = lib_path.replace("blob", "raw")
         basename = os.path.basename(lib_path)
         r = requests.get(lib_path, allow_redirects=True)
