@@ -456,15 +456,19 @@ class MapInterface:
         raise NotImplementedError()
 
     def center_object(
-        self, ee_object: ee.ComputedObject, zoom: Optional[int] = None
+        self,
+        ee_object: ee.ComputedObject,
+        zoom: Optional[int] = None,
+        max_error: float = 0.001,
     ) -> None:
         """Centers the map view on a given object.
 
         Args:
             ee_object (ee.ComputedObject): The Earth Engine object to center on.
             zoom (Optional[int]): Zoom level to set. Defaults to None.
+            max_error (float): The maximum error for the geometry. Defaults to 0.001.
         """
-        del ee_object, zoom  # Unused.
+        del ee_object, zoom, max_error  # Unused.
         raise NotImplementedError()
 
     def get_scale(self) -> float:
@@ -846,20 +850,25 @@ class Map(ipyleaflet.Map, MapInterface):
             ) from exc
 
     def center_object(
-        self, ee_object: ee.ComputedObject, zoom: Optional[int] = None
+        self,
+        ee_object: ee.ComputedObject,
+        zoom: Optional[int] = None,
+        max_error: float = 0.001,
     ) -> None:
         """Centers the map view on a given object.
 
         Args:
             ee_object (ee.ComputedObject): The Earth Engine object to center on.
             zoom (Optional[int]): Zoom level to set. Defaults to None.
+            max_error (float): The maximum error for the geometry. Defaults to 0.001.
         """
-        max_error = 0.001
         geometry = self._get_geometry(ee_object, max_error).transform(
             maxError=max_error
         )
         if zoom is None:
-            coordinates = geometry.bounds(max_error).getInfo()["coordinates"][0]
+            coordinates = geometry.bounds(maxError=max_error).getInfo()["coordinates"][
+                0
+            ]
             x_vals = [c[0] for c in coordinates]
             y_vals = [c[1] for c in coordinates]
             self.fit_bounds([[min(y_vals), min(x_vals)], [max(y_vals), max(x_vals)]])
@@ -1076,9 +1085,30 @@ class Map(ipyleaflet.Map, MapInterface):
             return
 
         basemap_names = kwargs.pop("basemaps", list(self._available_basemaps.keys()))
-        value = kwargs.pop(
-            "value", self._get_preferred_basemap_name(self.layers[0].name)
-        )
+
+        default_value_for_selector = None
+        if self.layers:
+            first_layer_name = getattr(self.layers[0], "name", "")
+            if first_layer_name:
+                default_value_for_selector = self._get_preferred_basemap_name(
+                    first_layer_name
+                )
+            elif self._available_basemaps:
+                default_value_for_selector = self._get_preferred_basemap_name(
+                    next(iter(self._available_basemaps.keys()))
+                )
+            else:
+                default_value_for_selector = "DEFAULT"
+
+        elif self._available_basemaps:
+            first_available_key = next(iter(self._available_basemaps.keys()))
+            default_value_for_selector = self._get_preferred_basemap_name(
+                first_available_key
+            )
+        else:
+            default_value_for_selector = "DEFAULT"
+
+        value = kwargs.pop("value", default_value_for_selector)
         basemap = map_widgets.BasemapSelector(basemap_names, value, **kwargs)
         basemap.on_close = lambda: self.remove("basemap_selector")
         basemap.on_basemap_changed = self._replace_basemap
@@ -1410,8 +1440,11 @@ class Map(ipyleaflet.Map, MapInterface):
             max_zoom=basemap.get("max_zoom", 24),
             attribution=basemap.get("attribution", None),
         )
-        # substitute_layer is broken when the map has a single layer.
-        if len(self.layers) == 1:
+        if not self.layers:
+            self.add_layer(new_layer)
+        elif len(self.layers) == 1:
+            # TODO check if this quirk/bug is still present:
+            # substitute_layer is broken when the map has a single layer.
             self.clear_layers()
             self.add_layer(new_layer)
         else:

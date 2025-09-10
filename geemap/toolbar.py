@@ -20,7 +20,7 @@ import ipywidgets as widgets
 import traitlets
 
 from ipyfilechooser import FileChooser
-from IPython.core.display import display
+from IPython.display import display
 from typing import Any, Callable, Optional
 
 from .common import *
@@ -85,7 +85,6 @@ class ToolbarItem(anywidget.AnyWidget):
             self.active = False
 
 
-@map_widgets.Theme.apply
 class Toolbar(anywidget.AnyWidget):
     """A toolbar that can be added to the map."""
 

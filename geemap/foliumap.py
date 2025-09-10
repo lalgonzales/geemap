@@ -10,24 +10,21 @@ import os
 import ee
 import folium
 from box import Box
-from folium import plugins
-
-
 from branca.element import Figure, JavascriptLink, MacroElement
+from folium import plugins
 from folium.elements import JSCSSMixin
 from folium.map import Layer
 from jinja2 import Template
 
+from . import examples
 from .basemaps import xyz_to_folium
 from .common import *
 from .conversion import *
 from .ee_tile_layers import *
 from .legends import builtin_legends
 from .osm import *
-from .timelapse import *
 from .plot import *
-from . import examples
-
+from .timelapse import *
 
 if not in_colab_shell():
     from .plot import *
@@ -37,7 +34,7 @@ basemaps = Box(xyz_to_folium(), frozen_box=True)
 
 
 class Map(folium.Map):
-    """The Map class inherits from folium.Map. By default, the Map will add Google Maps as the basemap. Set add_google_map = False to use OpenStreetMap as the basemap.
+    """The Map class inherits from folium.Map. By default, the Map will use OpenStreetMap as the basemap.
 
     Returns:
         object: folium map object.
@@ -119,6 +116,11 @@ class Map(folium.Map):
         else:
             width = "100%"
 
+        if "tiles" not in kwargs:
+            kwargs["tiles"] = None
+            if "basemap" not in kwargs:
+                kwargs["basemap"] = "OpenStreetMap"
+
         super().__init__(**kwargs)
         self.baseclass = "folium"
 
@@ -169,7 +171,7 @@ class Map(folium.Map):
         Args:
             mapTypeId (str, optional): A mapTypeId to set the basemap to. Can be one of "ROADMAP", "SATELLITE", "HYBRID" or "TERRAIN" to select one of the standard Google Maps API map types. Defaults to 'HYBRID'.
             styles ([type], optional): A dictionary of custom MapTypeStyle objects keyed with a name that will appear in the map's Map Type Controls. Defaults to None.
-            types ([type], optional): A list of mapTypeIds to make available. If omitted, but opt_styles is specified, appends all of the style keys to the standard Google Maps API map types.. Defaults to None.
+            types ([type], optional): A list of mapTypeIds to make available. If omitted, but opt_styles is specified, appends all of the style keys to the standard Google Maps API map types. Defaults to None.
         """
         try:
             basemaps[mapTypeId].add_to(self)
@@ -321,21 +323,20 @@ class Map(folium.Map):
         bounds = gdf.total_bounds
         self.zoom_to_bounds(bounds)
 
-    def center_object(self, ee_object, zoom=None):
+    def center_object(self, ee_object, zoom=None, max_error=0.001):
         """Centers the map view on a given object.
 
         Args:
             ee_object (Element|Geometry): An Earth Engine object to center on a geometry, image or feature.
             zoom (int, optional): The zoom level, from 1 to 24. Defaults to None.
+            max_error (float, optional): The maximum error for the geometry. Defaults to 0.001.
         """
-
-        maxError = 0.001
         if isinstance(ee_object, ee.Geometry):
-            geometry = ee_object.transform(maxError=maxError)
+            geometry = ee_object.transform(maxError=max_error)
         else:
             try:
-                geometry = ee_object.geometry(maxError=maxError).transform(
-                    maxError=maxError
+                geometry = ee_object.geometry(maxError=max_error).transform(
+                    maxError=max_error
                 )
             except Exception:
                 raise Exception(
@@ -346,7 +347,9 @@ class Map(folium.Map):
             if not isinstance(zoom, int):
                 raise Exception("Zoom must be an integer.")
             else:
-                centroid = geometry.centroid(maxError=maxError).getInfo()["coordinates"]
+                centroid = geometry.centroid(maxError=max_error).getInfo()[
+                    "coordinates"
+                ]
                 lat = centroid[1]
                 lon = centroid[0]
                 self.set_center(lon, lat, zoom)
@@ -355,7 +358,9 @@ class Map(folium.Map):
                     arc_zoom_to_extent(lon, lat, lon, lat)
 
         else:
-            coordinates = geometry.bounds(maxError).getInfo()["coordinates"][0]
+            coordinates = geometry.bounds(maxError=max_error).getInfo()["coordinates"][
+                0
+            ]
             x = [c[0] for c in coordinates]
             y = [c[1] for c in coordinates]
             xmin = min(x)
@@ -628,7 +633,7 @@ class Map(folium.Map):
             vmin (float, optional): The minimum value to use when colormapping the colormap when plotting a single band. Defaults to None.
             vmax (float, optional): The maximum value to use when colormapping the colormap when plotting a single band. Defaults to None.
             nodata (float, optional): The value from the band to use to interpret as not valid data. Defaults to None.
-            attribution (str, optional): Attribution for the source raster. This defaults to a message about it being a local file.. Defaults to None.
+            attribution (str, optional): Attribution for the source raster. This defaults to a message about it being a local file. Defaults to None.
             layer_name (str, optional): The layer name to use. Defaults to 'Raster'.
             array_args (dict, optional): Additional arguments to pass to `array_to_image`. Defaults to {}.
         """
@@ -687,7 +692,7 @@ class Map(folium.Map):
             vmin (float, optional): The minimum value to use when colormapping the palette when plotting a single band. Defaults to None.
             vmax (float, optional): The maximum value to use when colormapping the palette when plotting a single band. Defaults to None.
             nodata (float, optional): The value from the band to use to interpret as not valid data. Defaults to None.
-            attribution (str, optional): Attribution for the source raster. This defaults to a message about it being a local file.. Defaults to None.
+            attribution (str, optional): Attribution for the source raster. This defaults to a message about it being a local file. Defaults to None.
             layer_name (str, optional): The layer name to use. Defaults to None.
         """
         if isinstance(source, str) and source.startswith("http"):
@@ -800,7 +805,7 @@ class Map(folium.Map):
             style=style,
         )
         if draggable:
-            from branca.element import Template, MacroElement
+            from branca.element import MacroElement, Template
 
             content = (
                 '"""\n{% macro html(this, kwargs) %}\n'
@@ -829,9 +834,9 @@ class Map(folium.Map):
 
         Args:
             colors (list): The set of colors to be used for interpolation. Colors can be provided in the form: * tuples of RGBA ints between 0 and 255 (e.g: (255, 255, 0) or (255, 255, 0, 255)) * tuples of RGBA floats between 0. and 1. (e.g: (1.,1.,0.) or (1., 1., 0., 1.)) * HTML-like string (e.g: “#ffff00) * a color name or shortcut (e.g: “y” or “yellow”)
-            vmin (int, optional): The minimal value for the colormap. Values lower than vmin will be bound directly to colors[0].. Defaults to 0.
+            vmin (int, optional): The minimal value for the colormap. Values lower than vmin will be bound directly to colors[0]. Defaults to 0.
             vmax (float, optional): The maximal value for the colormap. Values higher than vmax will be bound directly to colors[-1]. Defaults to 1.0.
-            index (list, optional):The values corresponding to each color. It has to be sorted, and have the same length as colors. If None, a regular grid between vmin and vmax is created.. Defaults to None.
+            index (list, optional):The values corresponding to each color. It has to be sorted, and have the same length as colors. If None, a regular grid between vmin and vmax is created. Defaults to None.
             label (str, optional): The caption for the colormap. Defaults to "".
             categorical (bool, optional): Whether or not to create a categorical colormap. Defaults to False.
             step (int, optional): The step to split the LinearColormap into a StepColormap. Defaults to None.
@@ -1027,8 +1032,9 @@ class Map(folium.Map):
             FileNotFoundError: The provided GeoJSON file could not be found.
         """
         import json
-        import requests
         import random
+
+        import requests
 
         try:
             if isinstance(in_geojson, str):
@@ -1216,7 +1222,6 @@ class Map(folium.Map):
         layer_name="Untitled",
         which_result=None,
         by_osmid=False,
-        buffer_dist=None,
         to_ee=False,
         geodesic=True,
         **kwargs,
@@ -1225,19 +1230,16 @@ class Map(folium.Map):
 
         Args:
             query (str | dict | list): Query string(s) or structured dict(s) to geocode.
-            layer_name (str, optional): The layer name to be used.. Defaults to "Untitled".
+            layer_name (str, optional): The layer name to be used. Defaults to "Untitled".
             style (dict, optional): A dictionary specifying the style to be used. Defaults to {}.
             which_result (INT, optional): Which geocoding result to use. if None, auto-select the first (Multi)Polygon or raise an error if OSM doesn't return one. to get the top match regardless of geometry type, set which_result=1. Defaults to None.
             by_osmid (bool, optional): If True, handle query as an OSM ID for lookup rather than text search. Defaults to False.
-            buffer_dist (float, optional): Distance to buffer around the place geometry, in meters. Defaults to None.
             to_ee (bool, optional): Whether to convert the csv to an ee.FeatureCollection.
             geodesic (bool, optional): Whether line segments should be interpreted as spherical geodesics. If false, indicates that line segments should be interpreted as planar lines in the specified CRS. If absent, defaults to true if the CRS is geographic (including the default EPSG:4326), or to false if the CRS is projected.
 
         """
 
-        gdf = osm_to_gdf(
-            query, which_result=which_result, by_osmid=by_osmid, buffer_dist=buffer_dist
-        )
+        gdf = osm_to_gdf(query, which_result=which_result, by_osmid=by_osmid)
         geojson = gdf.__geo_interface__
 
         if to_ee:
@@ -1254,7 +1256,6 @@ class Map(folium.Map):
         query,
         which_result=None,
         by_osmid=False,
-        buffer_dist=None,
         layer_name="Untitled",
         style={},
         hover_style={},
@@ -1268,8 +1269,7 @@ class Map(folium.Map):
             query (str | dict | list): Query string(s) or structured dict(s) to geocode.
             which_result (int, optional): Which geocoding result to use. if None, auto-select the first (Multi)Polygon or raise an error if OSM doesn't return one. to get the top match regardless of geometry type, set which_result=1. Defaults to None.
             by_osmid (bool, optional): If True, handle query as an OSM ID for lookup rather than text search. Defaults to False.
-            buffer_dist (float, optional): Distance to buffer around the place geometry, in meters. Defaults to None.
-            layer_name (str, optional): The layer name to be used.. Defaults to "Untitled".
+            layer_name (str, optional): The layer name to be used. Defaults to "Untitled".
             style (dict, optional): A dictionary specifying the style to be used. Defaults to {}.
             hover_style (dict, optional): Hover style dictionary. Defaults to {}.
             style_callback (function, optional): Styling function that is called for each feature, and should return the feature style. This styling function takes the feature as argument. Defaults to None.
@@ -1278,9 +1278,7 @@ class Map(folium.Map):
 
         """
 
-        gdf = osm_gdf_from_geocode(
-            query, which_result=which_result, by_osmid=by_osmid, buffer_dist=buffer_dist
-        )
+        gdf = osm_gdf_from_geocode(query, which_result=which_result, by_osmid=by_osmid)
         geojson = gdf.__geo_interface__
 
         self.add_geojson(
@@ -1312,7 +1310,7 @@ class Map(folium.Map):
             address (str): The address to geocode and use as the central point around which to get the geometries.
             tags (dict): Dict of tags used for finding objects in the selected area. Results returned are the union, not intersection of each individual tag. Each result matches at least one given tag. The dict keys should be OSM tags, (e.g., building, landuse, highway, etc) and the dict values should be either True to retrieve all items with the given tag, or a string to get a single tag-value combination, or a list of strings to get multiple values for the given tag. For example, tags = {‘building’: True} would return all building footprints in the area. tags = {‘amenity’:True, ‘landuse’:[‘retail’,’commercial’], ‘highway’:’bus_stop’} would return all amenities, landuse=retail, landuse=commercial, and highway=bus_stop.
             dist (int, optional): Distance in meters. Defaults to 1000.
-            layer_name (str, optional): The layer name to be used.. Defaults to "Untitled".
+            layer_name (str, optional): The layer name to be used. Defaults to "Untitled".
             style (dict, optional): A dictionary specifying the style to be used. Defaults to {}.
             hover_style (dict, optional): Hover style dictionary. Defaults to {}.
             style_callback (function, optional): Styling function that is called for each feature, and should return the feature style. This styling function takes the feature as argument. Defaults to None.
@@ -1339,7 +1337,6 @@ class Map(folium.Map):
         query,
         tags,
         which_result=None,
-        buffer_dist=None,
         layer_name="Untitled",
         style={},
         hover_style={},
@@ -1353,8 +1350,7 @@ class Map(folium.Map):
             query (str | dict | list): Query string(s) or structured dict(s) to geocode.
             tags (dict): Dict of tags used for finding objects in the selected area. Results returned are the union, not intersection of each individual tag. Each result matches at least one given tag. The dict keys should be OSM tags, (e.g., building, landuse, highway, etc) and the dict values should be either True to retrieve all items with the given tag, or a string to get a single tag-value combination, or a list of strings to get multiple values for the given tag. For example, tags = {‘building’: True} would return all building footprints in the area. tags = {‘amenity’:True, ‘landuse’:[‘retail’,’commercial’], ‘highway’:’bus_stop’} would return all amenities, landuse=retail, landuse=commercial, and highway=bus_stop.
             which_result (int, optional): Which geocoding result to use. if None, auto-select the first (Multi)Polygon or raise an error if OSM doesn't return one. to get the top match regardless of geometry type, set which_result=1. Defaults to None.
-            buffer_dist (float, optional): Distance to buffer around the place geometry, in meters. Defaults to None.
-            layer_name (str, optional): The layer name to be used.. Defaults to "Untitled".
+            layer_name (str, optional): The layer name to be used. Defaults to "Untitled".
             style (dict, optional): A dictionary specifying the style to be used. Defaults to {}.
             hover_style (dict, optional): Hover style dictionary. Defaults to {}.
             style_callback (function, optional): Styling function that is called for each feature, and should return the feature style. This styling function takes the feature as argument. Defaults to None.
@@ -1362,7 +1358,7 @@ class Map(folium.Map):
             info_mode (str, optional): Displays the attributes by either on_hover or on_click. Any value other than "on_hover" or "on_click" will be treated as None. Defaults to "on_hover".
 
         """
-        gdf = osm_gdf_from_place(query, tags, which_result, buffer_dist)
+        gdf = osm_gdf_from_place(query, tags, which_result)
         geojson = gdf.__geo_interface__
 
         self.add_geojson(
@@ -1394,7 +1390,7 @@ class Map(folium.Map):
             center_point (tuple): The (lat, lng) center point around which to get the geometries.
             tags (dict): Dict of tags used for finding objects in the selected area. Results returned are the union, not intersection of each individual tag. Each result matches at least one given tag. The dict keys should be OSM tags, (e.g., building, landuse, highway, etc) and the dict values should be either True to retrieve all items with the given tag, or a string to get a single tag-value combination, or a list of strings to get multiple values for the given tag. For example, tags = {‘building’: True} would return all building footprints in the area. tags = {‘amenity’:True, ‘landuse’:[‘retail’,’commercial’], ‘highway’:’bus_stop’} would return all amenities, landuse=retail, landuse=commercial, and highway=bus_stop.
             dist (int, optional): Distance in meters. Defaults to 1000.
-            layer_name (str, optional): The layer name to be used.. Defaults to "Untitled".
+            layer_name (str, optional): The layer name to be used. Defaults to "Untitled".
             style (dict, optional): A dictionary specifying the style to be used. Defaults to {}.
             hover_style (dict, optional): Hover style dictionary. Defaults to {}.
             style_callback (function, optional): Styling function that is called for each feature, and should return the feature style. This styling function takes the feature as argument. Defaults to None.
@@ -1432,7 +1428,7 @@ class Map(folium.Map):
         Args:
             polygon (shapely.geometry.Polygon | shapely.geometry.MultiPolygon): Geographic boundaries to fetch geometries within
             tags (dict): Dict of tags used for finding objects in the selected area. Results returned are the union, not intersection of each individual tag. Each result matches at least one given tag. The dict keys should be OSM tags, (e.g., building, landuse, highway, etc) and the dict values should be either True to retrieve all items with the given tag, or a string to get a single tag-value combination, or a list of strings to get multiple values for the given tag. For example, tags = {‘building’: True} would return all building footprints in the area. tags = {‘amenity’:True, ‘landuse’:[‘retail’,’commercial’], ‘highway’:’bus_stop’} would return all amenities, landuse=retail, landuse=commercial, and highway=bus_stop.
-            layer_name (str, optional): The layer name to be used.. Defaults to "Untitled".
+            layer_name (str, optional): The layer name to be used. Defaults to "Untitled".
             style (dict, optional): A dictionary specifying the style to be used. Defaults to {}.
             hover_style (dict, optional): Hover style dictionary. Defaults to {}.
             style_callback (function, optional): Styling function that is called for each feature, and should return the feature style. This styling function takes the feature as argument. Defaults to None.
@@ -1477,7 +1473,7 @@ class Map(folium.Map):
             east (float): Eastern longitude of bounding box.
             west (float): Western longitude of bounding box.
             tags (dict): Dict of tags used for finding objects in the selected area. Results returned are the union, not intersection of each individual tag. Each result matches at least one given tag. The dict keys should be OSM tags, (e.g., building, landuse, highway, etc) and the dict values should be either True to retrieve all items with the given tag, or a string to get a single tag-value combination, or a list of strings to get multiple values for the given tag. For example, tags = {‘building’: True} would return all building footprints in the area. tags = {‘amenity’:True, ‘landuse’:[‘retail’,’commercial’], ‘highway’:’bus_stop’} would return all amenities, landuse=retail, landuse=commercial, and highway=bus_stop.
-            layer_name (str, optional): The layer name to be used.. Defaults to "Untitled".
+            layer_name (str, optional): The layer name to be used. Defaults to "Untitled".
             style (dict, optional): A dictionary specifying the style to be used. Defaults to {}.
             hover_style (dict, optional): Hover style dictionary. Defaults to {}.
             style_callback (function, optional): Styling function that is called for each feature, and should return the feature style. This styling function takes the feature as argument. Defaults to None.
@@ -1888,8 +1884,8 @@ class Map(folium.Map):
             formatting (ReportFormatting, optional): Set the basic styling for your report.
             token (str, optional): The token to use to datapane to publish the map. See https://docs.datapane.com/tut-getting-started. Defaults to None.
         """
-        import webbrowser
         import warnings
+        import webbrowser
 
         if os.environ.get("USE_MKDOCS") is not None:
             return
@@ -2208,6 +2204,7 @@ class Map(folium.Map):
 
         """
         import warnings
+
         import pandas as pd
         from folium.features import DivIcon
 
@@ -2443,7 +2440,7 @@ class Map(folium.Map):
             vmin (float, optional): The minimum value to use when colormapping the palette when plotting a single band. Defaults to None.
             vmax (float, optional): The maximum value to use when colormapping the palette when plotting a single band. Defaults to None.
             nodata (float, optional): The value from the band to use to interpret as not valid data. Defaults to None.
-            attribution (str, optional): Attribution for the source raster. This defaults to a message about it being a local file.. Defaults to None.
+            attribution (str, optional): Attribution for the source raster. This defaults to a message about it being a local file. Defaults to None.
             layer_name (str, optional): The layer name to use. Defaults to "netCDF layer".
             shift_lon (bool, optional): Flag to shift longitude values from [0, 360] to the range [-180, 180]. Defaults to True.
             lat (str, optional): Name of the latitude variable. Defaults to 'lat'.
@@ -2533,7 +2530,7 @@ class Map(folium.Map):
                     An option to control brackets from mapclassify legend.
                     If True, open/closed interval brackets are shown in the legend.
             classification_kwds (dict, optional): Keyword arguments to pass to mapclassify. Defaults to None.
-            layer_name (str, optional): The layer name to be used.. Defaults to "Untitled".
+            layer_name (str, optional): The layer name to be used. Defaults to "Untitled".
             style_function (function, optional): Styling function that is called for each feature, and should return the feature style. This styling function takes the feature as argument. Defaults to None.
                 style_callback is a function that takes the feature as argument and should return a dictionary of the following form:
                 style_callback = lambda feat: {"fillColor": feat["properties"]["color"]}
@@ -2674,9 +2671,10 @@ class Map(folium.Map):
             position (str, optional): The position of the widget. Defaults to "bottomright".
         """
 
-        from matplotlib import figure
         import base64
         from io import BytesIO
+
+        from matplotlib import figure
 
         allowed_positions = ["topleft", "topright", "bottomleft", "bottomright"]
 
